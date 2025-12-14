@@ -17,6 +17,26 @@ use Illuminate\Support\Facades\Log;
 if (!function_exists('createBrowser')) {
     function createBrowser(): Browser
     {
+        // Use a unique userDataDir per process to avoid SingletonLock conflicts
+        $userDataDir = storage_path('browser/' . getmypid());
+        
+        // Ensure the directory exists
+        if (!is_dir($userDataDir)) {
+            mkdir($userDataDir, 0755, true);
+        }
+        
+        // Clean up any stale SingletonLock files
+        $singletonLockPath = $userDataDir . '/SingletonLock';
+        if (file_exists($singletonLockPath)) {
+            @unlink($singletonLockPath);
+        }
+        
+        // Also clean up the default browser directory's lock file if it exists
+        $defaultBrowserDir = storage_path('browser');
+        $defaultLockPath = $defaultBrowserDir . '/SingletonLock';
+        if (file_exists($defaultLockPath)) {
+            @unlink($defaultLockPath);
+        }
 
         $browserFactory = new BrowserFactory(getenv('CHROME_BINARY') ?: null);
 
@@ -28,12 +48,11 @@ if (!function_exists('createBrowser')) {
             'keepAlive' => true,
             'imagesEnabled' => true,
             'ignoreCertificateErrors' => true,
-            'userDataDir' => storage_path('browser'),
+            'userDataDir' => $userDataDir,
             'userCrashDumpsDir' => storage_path('browser/crash-dumps'),
             'customFlags' => [
                 '--disable-blink-features',
                 '--disable-blink-features=AutomationControlled',
-                '--incognito',
                 '--enable-automation=false',
                 '--no-sandbox',
             ],
@@ -53,7 +72,19 @@ if (!function_exists('destroyBrowser')) {
      */
     function destroyBrowser(): void
     {
-        getBrowser()->close();
+        try {
+            $browser = getBrowser();
+            $browser->close();
+        } catch (\Throwable $e) {
+            // Browser might already be closed, ignore
+        }
+        
+        // Clean up SingletonLock file for this process
+        $userDataDir = storage_path('browser/' . getmypid());
+        $singletonLockPath = $userDataDir . '/SingletonLock';
+        if (file_exists($singletonLockPath)) {
+            @unlink($singletonLockPath);
+        }
     }
 }
 

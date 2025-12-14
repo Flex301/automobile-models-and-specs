@@ -26,6 +26,7 @@ class Automobile extends Model
         'description',
         'press_release',
         'photos',
+        'production_years',
     ];
 
     /**
@@ -33,6 +34,7 @@ class Automobile extends Model
      */
     protected $casts = [
         'photos' => 'array',
+        'production_years' => 'array',
     ];
 
     /**
@@ -57,6 +59,7 @@ class Automobile extends Model
             'description' => $this->description,
             'press_release' => $this->press_release,
             'photos' => json_encode($this->photos),
+            'production_years' => json_encode($this->production_years),
         ];
     }
 

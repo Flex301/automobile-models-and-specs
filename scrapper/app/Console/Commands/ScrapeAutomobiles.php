@@ -66,61 +66,44 @@ class ScrapeAutomobiles extends Command
         $this->output->info('Looking for automobile models.');
 
         //Get rows as array that keeps row DOMs.
-        $automobileRowsDOMs = $this->getAutomobileRowDOMs();
+        $automobileRowsDOMsCollection = $this->getAutomobileRowDOMs();
 
-        if ($automobileRowsDOMs) {
+        if ($automobileRowsDOMsCollection) {
 
-            //Count automobile rows count.
-            $modelsCount = count($automobileRowsDOMs);
+            foreach ($automobileRowsDOMsCollection as $automobileRowsDOMs) {
+                foreach ($automobileRowsDOMs as $automobileRowDOM) {
 
-            //Create a console progressbar.
-            $progressbar = $this
-                ->output
-                ->createProgressBar($modelsCount);
-            $progressbar->setFormat('very_verbose');
-            $progressbar->start();
+                    //Get automobile detail page url.
+                    $detailURL = $automobileRowDOM->find('a', 0)->href ?? null;
 
-            //Print an info about models count.
-            $this->output->info($modelsCount . ' models found.');
+                    DB::beginTransaction();
 
-            foreach ($automobileRowsDOMs as $automobileRowDOM) {
+                    try{
 
-                //Get automobile detail page url.
-                $detailURL = $automobileRowDOM->find('a', 0)->href ?? null;
+                        //Check process continue option
+                        $automobile = Automobile::where('url_hash', hash('crc32', $detailURL))->first();
 
-                DB::beginTransaction();
+                        //If automobile exists in database, do not process it.
+                        if ($automobile) {
+                            continue;
+                        }
 
-                try{
+                        $this->output->info('Processing automobile: ' . $detailURL);
 
-                    //Check process continue option
-                    $automobile = Automobile::where('url_hash', hash('crc32', $detailURL))->first();
+                        //Process automobile detail page.
+                        $this->processAutomobileDetailPage($detailURL);
 
-                    //If automobile exists in database, do not process it.
-                    if ($automobile) {
-                        $progressbar->advance();
-                        continue;
+                        DB::commit();
+
+                    }catch (Throwable $exception){
+
+                        DB::rollback();
+
+                        throw $exception;
                     }
 
-                    //Process automobile detail page.
-                    $this->processAutomobileDetailPage($detailURL);
-
-                    DB::commit();
-
-                    //Increase progressbar.
-                    $progressbar->advance();
-
-                }catch (Throwable $exception){
-
-                    DB::rollback();
-
-                    throw $exception;
-
                 }
-
             }
-
-            //Finish progressbar.
-            $progressbar->finish();
 
         } else {
 
@@ -130,13 +113,7 @@ class ScrapeAutomobiles extends Command
 
         }
 
-        //Print an information that process finished.
-        $this
-            ->output
-            ->info(count($automobileRowsDOMs) . ' models inserted/updated on database.');
-
         return self::SUCCESS;
-
     }
 
     /**
@@ -215,16 +192,16 @@ class ScrapeAutomobiles extends Command
     /**
      * Loads search page and get brand ids as a comma-separated string.
      *
-     * @return string|null
+     * @return string[]
      */
-    private function getBrandIds(): string|null
+    private function getBrandIds(): array
     {
 
         $pageContents = browseUrl('https://www.autoevolution.com/carfinder/');
 
         $pageDom = str_get_html($pageContents);
 
-        $brandIds = null;
+        $brandIds = [];
 
         $selectBoxItemDOMs = $pageDom
             ->find('.cfrow', 1)
@@ -234,8 +211,7 @@ class ScrapeAutomobiles extends Command
             $brandIds[] = $boxItemDom->getAttribute('data-opt');
         }
 
-        return $brandIds ? implode(',', $brandIds) : null;
-
+        return $brandIds;
     }
 
     /**
@@ -243,9 +219,8 @@ class ScrapeAutomobiles extends Command
      *
      * @return array|null
      */
-    private function getAutomobileRowDOMs(): array|null
+    private function getAutomobileRowDOMs(): \Generator
     {
-
         $brandIds = $this->getBrandIds();
 
         if (!$brandIds) {
@@ -255,16 +230,16 @@ class ScrapeAutomobiles extends Command
             die();
         }
 
-        //Make another request to get all automobiles
-        $pageContents = browseUrlPost('https://www.autoevolution.com/carfinder/', [
-            'n[brand]' => $this->getBrandIds(),
-            'n[submitted]' => 1
-        ]);
+        foreach ($brandIds as $brandId) {
+            $pageContents = browseUrlPost('https://www.autoevolution.com/carfinder/', [
+                'n[brand]' => $brandId,
+                'n[submitted]' => 1
+            ]);
 
-        $pageDom = str_get_html($pageContents);
+            $pageDom = str_get_html($pageContents);
 
-        return $pageDom->find('h5');
-
+            yield $pageDom->find('h5');
+        }
     }
 
     /**
@@ -320,6 +295,40 @@ class ScrapeAutomobiles extends Command
     }
 
     /**
+     * Gets production years from HTML resource.
+     *
+     * @param simple_html_dom $pageDom
+     * @return array|null
+     */
+    private function getProductionYears(simple_html_dom $pageDom): array|null
+    {
+        $productionYears = null;
+
+        // Find the paragraph that contains production years
+        $paragraphs = $pageDom->find('p.nomgtop.subtlesep_bottom');
+
+        foreach ($paragraphs as $paragraph) {
+            $html = $paragraph->innertext;
+            
+            // Check if this paragraph contains "Production years:"
+            if (preg_match('/<b>Production years:<\/b>\s*([0-9, ]+)/i', $html, $matches)) {
+                // Extract the years string and split by comma
+                $yearsString = trim($matches[1]);
+                
+                // Split by comma and clean up
+                $years = array_map('trim', explode(',', $yearsString));
+                
+                // Convert to integers and filter out any non-numeric values
+                $productionYears = array_map('intval', array_filter($years, 'is_numeric'));
+                
+                break;
+            }
+        }
+
+        return $productionYears;
+    }
+
+    /**
      * Processes automobile detail page.
      *
      * @param string $detailURL
@@ -328,7 +337,6 @@ class ScrapeAutomobiles extends Command
      */
     private function processAutomobileDetailPage(string $detailURL): void
     {
-
         $pageDom = $this->loadURLAsDom($detailURL);
 
         if ($pageDom) {
@@ -341,6 +349,10 @@ class ScrapeAutomobiles extends Command
                 throw new Exception($brandName . ' could not found in database.');
             }
 
+            $productionYears = $this->getProductionYears($pageDom);
+
+            $this->output->info('Production years: ' . implode(', ', $productionYears));
+
             $automobile = Automobile::updateOrCreate([
                 'url_hash' => hash('crc32', $detailURL),
             ], [
@@ -350,6 +362,7 @@ class ScrapeAutomobiles extends Command
                 'description' => $this->getContent($pageDom),
                 'press_release' => $this->getPressRelease($pageDom),
                 'photos' => $this->getPhotos($pageDom),
+                'production_years' => $productionYears,
             ]);
 
             $this->processEngineDOMs($automobile->id, $pageDom);
