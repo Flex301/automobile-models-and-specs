@@ -76,17 +76,17 @@ class ScrapeAutomobiles extends Command
                     //Get automobile detail page url.
                     $detailURL = $automobileRowDOM->find('a', 0)->href ?? null;
 
+                    //Check process continue option
+                    $automobile = Automobile::where('url_hash', hash('crc32', $detailURL))->first();
+
+                    //If automobile exists in database, do not process it.
+                    if ($automobile) {
+                        continue;
+                    }
+
                     DB::beginTransaction();
 
                     try{
-
-                        //Check process continue option
-                        $automobile = Automobile::where('url_hash', hash('crc32', $detailURL))->first();
-
-                        //If automobile exists in database, do not process it.
-                        if ($automobile) {
-                            continue;
-                        }
 
                         $this->output->info('Processing automobile: ' . $detailURL);
 
@@ -95,7 +95,7 @@ class ScrapeAutomobiles extends Command
 
                         DB::commit();
 
-                    }catch (Throwable $exception){
+                    } catch (Throwable $exception){
 
                         DB::rollback();
 
@@ -364,6 +364,8 @@ class ScrapeAutomobiles extends Command
                 'photos' => $this->getPhotos($pageDom),
                 'production_years' => $productionYears,
             ]);
+
+            $this->output->info('Saved automobile: ' . $automobile->id);
 
             $this->processEngineDOMs($automobile->id, $pageDom);
 
