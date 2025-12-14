@@ -15,10 +15,10 @@ class CreateAutomobilesTable extends Migration
     {
         Schema::create('automobiles', function (Blueprint $table) {
             $table->id();
-            $table->string('url_hash')->index('url_hash');
+            $table->string('url_hash')->index('automobiles_url_hash_index');
             $table->longText('url');
-            $table->bigInteger('brand_id')->index('brand_id');
-            $table->string('name')->index('name');
+            $table->bigInteger('brand_id')->index('automobiles_brand_id_index');
+            $table->string('name')->index('automobiles_name_index');
             $table->longText('description')->nullable();
             $table->longText('press_release')->nullable();
             $table->longText('photos')->nullable();

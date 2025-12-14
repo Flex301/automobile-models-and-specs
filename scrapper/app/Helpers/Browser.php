@@ -18,7 +18,7 @@ if (!function_exists('createBrowser')) {
     function createBrowser(): Browser
     {
 
-        $browserFactory = new BrowserFactory();
+        $browserFactory = new BrowserFactory(getenv('CHROME_BINARY') ?: null);
 
         $browser = $browserFactory->createBrowser([
             'headless' => true,
@@ -41,9 +41,7 @@ if (!function_exists('createBrowser')) {
 
         $browser->createPage();
 
-        app()->instance(Browser::class, $browser);
-
-        return app(Browser::class);
+        return $browser;
 
     }
 }

@@ -15,9 +15,9 @@ class CreateBrandsTable extends Migration
     {
         Schema::create('brands', function (Blueprint $table) {
             $table->id();
-            $table->string('url_hash')->index('url_hash');
+            $table->string('url_hash')->index('brands_url_hash_index');
             $table->text('url');
-            $table->string('name')->index('name');
+            $table->string('name')->index('brands_name_index');
             $table->text('logo')->nullable();
             $table->softDeletes();
             $table->timestamps();

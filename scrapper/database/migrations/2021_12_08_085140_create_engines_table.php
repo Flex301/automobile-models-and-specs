@@ -15,9 +15,9 @@ class CreateEnginesTable extends Migration
     {
         Schema::create('engines', function (Blueprint $table) {
             $table->id();
-            $table->bigInteger('other_id')->index('other_id')->comment('Engine id on autoevolution');
-            $table->bigInteger('automobile_id')->index('automobile_id');
-            $table->string('name')->index('name');
+            $table->bigInteger('other_id')->index('engines_other_id_index')->comment('Engine id on autoevolution');
+            $table->bigInteger('automobile_id')->index('engines_automobile_id_index');
+            $table->string('name')->index('engines_name_index');
             $table->longText('specs')->nullable();
             $table->timestamps();
         });
